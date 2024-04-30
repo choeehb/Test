@@ -1,0 +1,29 @@
+name: sync masterdata to google sheet
+
+on:
+  push:
+    branches: [ "master" ]
+    
+jobs:
+  run-code:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v2
+
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.x
+
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y build-essential libffi-dev
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run Python script
+        run: python sync_masterdata_to_googlesheet.py # 이곳에 실제 파이썬 파일명을 적어주세요.
