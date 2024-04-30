@@ -27,6 +27,6 @@ jobs:
 
       - name: Identify changed CSV files and update Google Sheets
         env:
-          APPS_SCRIPT_URL: "https://script.google.com/macros/s/AKfycbxg51Qidrl7HBBS4c-CfCyBZbQ5TfeEVAmnWH6MfYn2yTGrNPp0e5tIzQGNBZDiZhMS/exec"
+          APPS_SCRIPT_URL: "https://script.google.com/macros/s/AKfycbzXNUZLyp3p4S-OMS9-56ZCWd8JI7ycxQM-0rhJbcshm97u-gKGi4nXeE_8iRMW79wy/exec"
 
         run: python update_sheets.py
