@@ -8,21 +8,25 @@ on:
 jobs:
   update-sheets:
     runs-on: ubuntu-latest
+    
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
-      
+        with:
+          fetch-depth: 0  # 모든 커밋 히스토리를 가져옴
+
       - name: Set up Python
-        uses: actions/setup-python@v3
+        uses: actions/setup-python@v2
         with:
           python-version: '3.9'
-      
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install requests
-      
-      - name: Update Google Sheets
+
+      - name: Identify changed CSV files and update Google Sheets
         env:
           APPS_SCRIPT_URL: "https://script.google.com/macros/s/AKfycbw3lpeTpEXCE4lTOHOxy0XrSwteeFXd2ilM5oMwJrGTEiVsq91_Bo0RbnTfMmXTUNgd/exec"
+
         run: python update_sheets.py

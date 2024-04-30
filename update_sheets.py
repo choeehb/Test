@@ -1,16 +1,11 @@
-import os
 import subprocess
+import os
 import requests
-import json
 
 def get_changed_files():
-    try:
-        # 마지막 커밋과 그 이전 커밋 간의 변경된 파일 목록을 가져옴
-        changed_files = subprocess.check_output(['git', 'diff', '--name-only', 'HEAD^', 'HEAD']).decode().split()
-    except subprocess.CalledProcessError:
-        # 에러 발생 시(예: 첫 번째 커밋인 경우), 모든 파일을 대상으로 간주
-        changed_files = subprocess.check_output(['git', 'ls-files']).decode().split()
-    # 'sheets' 폴더 내의 .csv 파일만 필터링
+    # 'git diff' 명령을 실행하여 마지막 커밋 이후 변경된 파일들을 가져옵니다.
+    changed_files = subprocess.check_output(['git', 'diff', '--name-only', 'HEAD^', 'HEAD']).decode().split()
+    # 'sheets' 폴더 내의 .csv 파일만 필터링합니다.
     return [f for f in changed_files if f.startswith('sheets/') and f.endswith('.csv')]
 
 def main():
