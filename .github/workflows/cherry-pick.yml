@@ -1,0 +1,77 @@
+name: Cherry-Pick Workflow
+
+on:
+  pull_request:
+    types: [closed]
+
+jobs:
+  cherry-pick:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the repository
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+
+      - name: Check for cherry-pick command in comments
+        id: check_comment
+        run: |
+          comments_url="${{ github.event.pull_request.comments_url }}"
+          comments=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" $comments_url)
+          echo "$comments" | jq -r '.[] | select(.body | test("\\[x\\] cherry-pick")) | .body' | grep -oP '\[x\] cherry-pick \K(\S+)' > branch_name.txt || echo "none" > branch_name.txt
+          branch=$(cat branch_name.txt)
+          echo "::set-output name=branch::${branch}"
+
+      - name: Cherry-pick the merge commit
+        id: cherry_pick_commit
+        if: steps.check_comment.outputs.branch != 'none'
+        run: |
+          branch_name=$(cat branch_name.txt)
+          merge_commit_sha="${{ github.event.pull_request.merge_commit_sha }}"
+          pr_number="${{ github.event.pull_request.number }}"
+          new_branch="cherry-pick/${pr_number}-${merge_commit_sha}"
+          git checkout -b $new_branch origin/$branch_name
+          git cherry-pick $merge_commit_sha
+          git push origin $new_branch
+          echo "::set-output name=new_branch::${new_branch}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create a pull request
+        id: create_pr
+        if: steps.check_comment.outputs.branch != 'none'
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: 'Cherry-pick commit from PR #${{ github.event.pull_request.number }}'
+          branch: ${{ steps.cherry_pick_commit.outputs.new_branch }}
+          title: 'Cherry-pick PR #${{ github.event.pull_request.number }}'
+          body: 'This PR cherry-picks commit from PR #${{ github.event.pull_request.number }}'
+          base: ${{ steps.check_comment.outputs.branch }}
+          auto-merge: true
+
+      - name: Send webhook notification
+        if: steps.check_comment.outputs.branch != 'none'
+        run: |
+          webhook_url="${{ secrets.WEBHOOK_URL }}"
+          pr_url="${{ steps.create_pr.outputs.pull-request-url }}"
+          pr_author="${{ github.event.pull_request.user.login }}"
+          pr_title="${{ github.event.pull_request.title }}"
+          payload=$( jq -n --arg pr_url "$pr_url" --arg pr_author "$pr_author" --arg pr_title "$pr_title" --arg result "success" \
+                    '{ pr_url: $pr_url, pr_author: $pr_author, pr_title: $pr_title, result: $result }' )
+          curl -X POST -H "Content-Type: application/json" -d "$payload" $webhook_url
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Send failure webhook if cherry-pick fails
+        if: failure() && steps.check_comment.outputs.branch != 'none'
+        run: |
+          webhook_url="${{ secrets.WEBHOOK_URL }}"
+          pr_author="${{ github.event.pull_request.user.login }}"
+          pr_title="${{ github.event.pull_request.title }}"
+          payload=$( jq -n --arg pr_author "$pr_author" --arg pr_title "$pr_title" --arg result "failure" \
+                    '{ pr_author: $pr_author, pr_title: $pr_title, result: $result }' )
+          curl -X POST -H "Content-Type: application/json" -d "$payload" $webhook_url
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
