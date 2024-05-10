@@ -5,7 +5,6 @@ on:
     types: [closed]
 
 env:
-  GITHUB_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
   WEBHOOK_URL: https://hook.us1.make.com/dha28pg49qkklv1c142ti36c4auvld8f
 
 jobs:
@@ -27,6 +26,7 @@ jobs:
       - name: Cherry-pick the merge commit
         if: env.branch != 'none'
         run: |
+          git fetch origin
           new_branch="cherry-pick/${{ github.event.pull_request.number }}-${{ github.event.pull_request.merge_commit_sha }}"
           git checkout -b $new_branch origin/$branch
           git cherry-pick ${{ github.event.pull_request.merge_commit_sha }}
