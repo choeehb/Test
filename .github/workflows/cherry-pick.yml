@@ -23,7 +23,7 @@ jobs:
         with:
           script: |
             const commentsUrl = context.payload.pull_request.comments_url;
-            const comments = await github.paginate(commentsUrl, response => response.data);
+            const comments = await github.paginate(commentsUrl);
             const match = comments.find(comment => comment.body.includes('[x] cherry-pick'));
             if (match) {
               const branch = match.body.match(/\[x\] cherry-pick (\S+)/)[1];
