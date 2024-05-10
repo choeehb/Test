@@ -5,6 +5,7 @@ on:
     types: [closed]
 
 env:
+  GITHUB_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
   WEBHOOK_URL: https://hook.us1.make.com/dha28pg49qkklv1c142ti36c4auvld8f
 
 jobs:
@@ -20,7 +21,7 @@ jobs:
       - name: Check for !after command in comments
         run: |
           comments=$(curl -s -H "Authorization: token $GITHUB_TOKEN" ${{ github.event.pull_request.comments_url }})
-          branch=$(echo "$comments" | jq -r '.[] | select(.body | contains("!after")) | .body' | grep -oP '!after \K(\S+)' || echo "none")
+          branch=$(echo "$comments" | jq -r '.[] | select(.body | contains("!after")) | .body' | grep -oP '!after \K\S+' || echo "none")
           echo "branch=$branch" >> $GITHUB_ENV
 
       - name: Cherry-pick the merge commit
