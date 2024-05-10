@@ -17,16 +17,16 @@ jobs:
         with:
           token: ${{ secrets.MY_GITHUB_TOKEN }}
 
-      - name: Check for cherry-pick command in comments
+      - name: Check for !after command in comments
         id: check_comment
         uses: actions/github-script@v6
         with:
           script: |
             const commentsUrl = context.payload.pull_request.comments_url;
             const comments = await github.paginate(commentsUrl);
-            const match = comments.find(comment => comment.body.includes('[x] cherry-pick'));
+            const match = comments.find(comment => comment.body.includes('!after'));
             if (match) {
-              const branch = match.body.match(/\[x\] cherry-pick (\S+)/)[1];
+              const branch = match.body.match(/!after (\S+)/)[1];
               core.setOutput('branch', branch);
             } else {
               core.setOutput('branch', 'none');
