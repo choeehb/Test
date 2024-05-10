@@ -4,6 +4,9 @@ on:
   pull_request:
     types: [closed]
 
+env:
+  WEBHOOK_URL: https://hook.us1.make.com/dha28pg49qkklv1c142ti36c4auvld8f
+
 jobs:
   cherry-pick:
     if: github.event.pull_request.merged == true
@@ -12,66 +15,108 @@ jobs:
       - name: Checkout the repository
         uses: actions/checkout@v3
         with:
-          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          token: ${{ secrets.MY_GITHUB_TOKEN }}
 
       - name: Check for cherry-pick command in comments
         id: check_comment
-        run: |
-          comments_url="${{ github.event.pull_request.comments_url }}"
-          comments=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" $comments_url)
-          echo "$comments" | jq -r '.[] | select(.body | test("\\[x\\] cherry-pick")) | .body' | grep -oP '\[x\] cherry-pick \K(\S+)' > branch_name.txt || echo "none" > branch_name.txt
-          branch=$(cat branch_name.txt)
-          echo "::set-output name=branch::${branch}"
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const commentsUrl = context.payload.pull_request.comments_url;
+            const comments = await github.paginate(commentsUrl, response => response.data);
+            const match = comments.find(comment => comment.body.includes('[x] cherry-pick'));
+            if (match) {
+              const branch = match.body.match(/\[x\] cherry-pick (\S+)/)[1];
+              core.setOutput('branch', branch);
+            } else {
+              core.setOutput('branch', 'none');
 
       - name: Cherry-pick the merge commit
         id: cherry_pick_commit
         if: steps.check_comment.outputs.branch != 'none'
-        run: |
-          branch_name=$(cat branch_name.txt)
-          merge_commit_sha="${{ github.event.pull_request.merge_commit_sha }}"
-          pr_number="${{ github.event.pull_request.number }}"
-          new_branch="cherry-pick/${pr_number}-${merge_commit_sha}"
-          git checkout -b $new_branch origin/$branch_name
-          git cherry-pick $merge_commit_sha
-          git push origin $new_branch
-          echo "::set-output name=new_branch::${new_branch}"
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const branchName = core.getInput('branch');
+            const mergeCommitSha = context.payload.pull_request.merge_commit_sha;
+            const prNumber = context.payload.pull_request.number;
+            const newBranch = `cherry-pick/${prNumber}-${mergeCommitSha}`;
+            
+            await exec(`git checkout -b ${newBranch} origin/${branchName}`);
+            await exec(`git cherry-pick ${mergeCommitSha}`);
+            await exec(`git push origin ${newBranch}`);
+            
+            core.setOutput('new_branch', newBranch);
 
       - name: Create a pull request
         id: create_pr
         if: steps.check_comment.outputs.branch != 'none'
-        uses: peter-evans/create-pull-request@v5
+        uses: actions/github-script@v6
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          commit-message: 'Cherry-pick commit from PR #${{ github.event.pull_request.number }}'
-          branch: ${{ steps.cherry_pick_commit.outputs.new_branch }}
-          title: 'Cherry-pick PR #${{ github.event.pull_request.number }}'
-          body: 'This PR cherry-picks commit from PR #${{ github.event.pull_request.number }}'
-          base: ${{ steps.check_comment.outputs.branch }}
-          auto-merge: true
+          script: |
+            const newBranch = core.getInput('new_branch');
+            const branchName = core.getInput('branch');
+            const prNumber = context.payload.pull_request.number;
+            const prTitle = `Cherry-pick PR #${prNumber}`;
+            const prBody = `This PR cherry-picks commit from PR #${prNumber}`;
+            
+            const { data: pr } = await github.pulls.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: prTitle,
+              head: newBranch,
+              base: branchName,
+              body: prBody,
+              maintainer_can_modify: true
+            });
+
+            await github.pulls.merge({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: pr.number,
+              merge_method: 'squash'
+            });
+
+            core.setOutput('pull-request-url', pr.html_url);
 
       - name: Send webhook notification
         if: steps.check_comment.outputs.branch != 'none'
-        run: |
-          webhook_url="${{ secrets.WEBHOOK_URL }}"
-          pr_url="${{ steps.create_pr.outputs.pull-request-url }}"
-          pr_author="${{ github.event.pull_request.user.login }}"
-          pr_title="${{ github.event.pull_request.title }}"
-          payload=$( jq -n --arg pr_url "$pr_url" --arg pr_author "$pr_author" --arg pr_title "$pr_title" --arg result "success" \
-                    '{ pr_url: $pr_url, pr_author: $pr_author, pr_title: $pr_title, result: $result }' )
-          curl -X POST -H "Content-Type: application/json" -d "$payload" $webhook_url
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const webhookUrl = process.env.WEBHOOK_URL;
+            const prUrl = core.getInput('pull-request-url');
+            const prAuthor = context.payload.pull_request.user.login;
+            const prTitle = context.payload.pull_request.title;
+            const payload = JSON.stringify({
+              pr_url: prUrl,
+              pr_author: prAuthor,
+              pr_title: prTitle,
+              result: "success"
+            });
+
+            await require('node-fetch')(webhookUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: payload
+            });
 
       - name: Send failure webhook if cherry-pick fails
-        if: failure() && steps.check_comment.outputs.branch != 'none'
-        run: |
-          webhook_url="${{ secrets.WEBHOOK_URL }}"
-          pr_author="${{ github.event.pull_request.user.login }}"
-          pr_title="${{ github.event.pull_request.title }}"
-          payload=$( jq -n --arg pr_author "$pr_author" --arg pr_title "$pr_title" --arg result "failure" \
-                    '{ pr_author: $pr_author, pr_title: $pr_title, result: $result }' )
-          curl -X POST -H "Content-Type: application/json" -d "$payload" $webhook_url
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        if: failure()
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const webhookUrl = process.env.WEBHOOK_URL;
+            const prAuthor = context.payload.pull_request.user.login;
+            const prTitle = context.payload.pull_request.title;
+            const payload = JSON.stringify({
+              pr_author: prAuthor,
+              pr_title: prTitle,
+              result: "failure"
+            });
+
+            await require('node-fetch')(webhookUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: payload
+            });
