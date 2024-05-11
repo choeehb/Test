@@ -32,7 +32,7 @@ jobs:
           git checkout origin/$branch
           git checkout -b $new_branch
           git cherry-pick ${{ github.event.pull_request.merge_commit_sha }}
-          git push origin $new_branch
+          git push --set-upstream origin $new_branch
           echo "new_branch=$new_branch" >> $GITHUB_ENV
 
       - name: Create a pull request
