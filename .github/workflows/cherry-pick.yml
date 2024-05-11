@@ -29,6 +29,8 @@ jobs:
         run: |
           git fetch origin
           new_branch="cherry-pick/${{ github.event.pull_request.number }}-${{ github.event.pull_request.merge_commit_sha }}"
+          git branch -f $branch origin/$branch
+          git checkout $branch
           git checkout -b $new_branch origin/$branch
           git cherry-pick ${{ github.event.pull_request.merge_commit_sha }}
           git push origin $new_branch
