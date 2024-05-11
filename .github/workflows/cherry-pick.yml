@@ -5,7 +5,6 @@ on:
     types: [closed]
 
 env:
-  GITHUB_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
   WEBHOOK_URL: https://hook.us1.make.com/dha28pg49qkklv1c142ti36c4auvld8f
 
 jobs:
@@ -45,7 +44,7 @@ jobs:
               git commit -m "Resolved conflicts for cherry-pick commit"
             fi
           fi
-          git push origin $new_branch
+          git push https://x-access-token:${{ secrets.MY_GITHUB_TOKEN }}@github.com/${{ github.repository }} $new_branch
           echo "new_branch=$new_branch" >> $GITHUB_ENV
         continue-on-error: true
 
@@ -70,7 +69,7 @@ jobs:
         if: always()
         run: |
           result="success"
-          if [ -z "$pr_url" ] || [ "$pr_url" == "null" ]; then
+          if [ -z "$pr_url" ] || [ "$pr_url" == "null" ];then
             result="failure"
           fi
           payload=$(jq -n \
