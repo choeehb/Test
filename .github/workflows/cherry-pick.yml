@@ -30,12 +30,12 @@ jobs:
           git fetch origin
           new_branch="cherry-pick/${{ github.event.pull_request.number }}-${{ github.event.pull_request.merge_commit_sha }}"
           git checkout -b $new_branch origin/$branch
-          git cherry-pick ${{ github.event.pull_request.merge_commit_sha }} || (
-            echo "Cherry-pick conflict detected. Attempting to resolve..."
+          if ! git cherry-pick ${{ github.event.pull_request.merge_commit_sha }}; then
+            echo "Cherry-pick conflict detected. Aborting..."
             git cherry-pick --abort
             git reset --hard
             exit 1
-          )
+          fi
           git push origin $new_branch
           echo "new_branch=$new_branch" >> $GITHUB_ENV
         continue-on-error: true
@@ -49,10 +49,12 @@ jobs:
             -d "{\"title\":\"$pr_title\",\"head\":\"$new_branch\",\"base\":\"$branch\",\"body\":\"$pr_body\",\"maintainer_can_modify\":true}" \
             https://api.github.com/repos/${{ github.repository }}/pulls)
           pr_url=$(echo "$pr_response" | jq -r '.html_url')
-          curl -s -X PUT -H "Authorization: token $GITHUB_TOKEN" \
-            -d "{\"merge_method\":\"squash\"}" \
-            https://api.github.com/repos/${{ github.repository }}/pulls/$(echo "$pr_response" | jq -r '.number')/merge
-          echo "pr_url=$pr_url" >> $GITHUB_ENV
+          if [ "$pr_url" != "null" ]; then
+            curl -s -X PUT -H "Authorization: token $GITHUB_TOKEN" \
+              -d "{\"merge_method\":\"squash\"}" \
+              https://api.github.com/repos/${{ github.repository }}/pulls/$(echo "$pr_response" | jq -r '.number')/merge
+          fi
+          echo "pr_url=${pr_url:-}" >> $GITHUB_ENV
         continue-on-error: true
 
       - name: Send webhook notification
@@ -68,4 +70,4 @@ jobs:
             --arg pr_title "${{ github.event.pull_request.title }}" \
             --arg result "$result" \
             '{ pr_url: $pr_url, pr_author: $pr_author, pr_title: $pr_title, result: $result }')
-          curl -X POST -H "Content-Type: application/json" -d "$pa
+          curl -X POST -H "Content-Type: application/json" -d "$payload" $WEBHOOK_URL
