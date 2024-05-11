@@ -29,11 +29,16 @@ jobs:
         run: |
           git fetch origin
           new_branch="cherry-pick/${{ github.event.pull_request.number }}-${{ github.event.pull_request.merge_commit_sha }}"
-          git checkout origin/$branch
-          git checkout -b $new_branch
-          git cherry-pick ${{ github.event.pull_request.merge_commit_sha }}
-          git push --set-upstream origin $new_branch
+          git checkout -b $new_branch origin/$branch
+          git cherry-pick ${{ github.event.pull_request.merge_commit_sha }} || (
+            echo "Cherry-pick conflict detected. Attempting to resolve..."
+            git cherry-pick --abort
+            git reset --hard
+            exit 1
+          )
+          git push origin $new_branch
           echo "new_branch=$new_branch" >> $GITHUB_ENV
+        continue-on-error: true
 
       - name: Create a pull request
         if: env.branch != 'none'
@@ -48,24 +53,19 @@ jobs:
             -d "{\"merge_method\":\"squash\"}" \
             https://api.github.com/repos/${{ github.repository }}/pulls/$(echo "$pr_response" | jq -r '.number')/merge
           echo "pr_url=$pr_url" >> $GITHUB_ENV
+        continue-on-error: true
 
       - name: Send webhook notification
-        if: env.branch != 'none'
+        if: always()
         run: |
+          result="success"
+          if [ -z "$pr_url" ]; then
+            result="failure"
+          fi
           payload=$(jq -n \
-            --arg pr_url "$pr_url" \
+            --arg pr_url "${pr_url:-N/A}" \
             --arg pr_author "${{ github.event.pull_request.user.login }}" \
             --arg pr_title "${{ github.event.pull_request.title }}" \
-            --arg result "success" \
+            --arg result "$result" \
             '{ pr_url: $pr_url, pr_author: $pr_author, pr_title: $pr_title, result: $result }')
-          curl -X POST -H "Content-Type: application/json" -d "$payload" $WEBHOOK_URL
-
-      - name: Send failure webhook if cherry-pick fails
-        if: failure() && env.branch != 'none'
-        run: |
-          payload=$(jq -n \
-            --arg pr_author "${{ github.event.pull_request.user.login }}" \
-            --arg pr_title "${{ github.event.pull_request.title }}" \
-            --arg result "failure" \
-            '{ pr_author: $pr_author, pr_title: $pr_title, result: $result }')
-          curl -X POST -H "Content-Type: application/json" -d "$payload" $WEBHOOK_URL
+          curl -X POST -H "Content-Type: application/json" -d "$pa
