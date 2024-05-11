@@ -18,6 +18,11 @@ jobs:
         with:
           token: ${{ secrets.MY_GITHUB_TOKEN }}
 
+      - name: Set Git user
+        run: |
+          git config --global user.email "action@github.com"
+          git config --global user.name "GitHub Action"
+
       - name: Check for !after command in comments
         run: |
           comments=$(curl -s -H "Authorization: token $GITHUB_TOKEN" ${{ github.event.pull_request.comments_url }})
@@ -61,7 +66,7 @@ jobs:
         if: always()
         run: |
           result="success"
-          if [ -z "$pr_url" ]; then
+          if [ -z "$pr_url" ] || [ "$pr_url" == "null" ]; then
             result="failure"
           fi
           payload=$(jq -n \
