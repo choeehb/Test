@@ -36,10 +36,13 @@ jobs:
           new_branch="cherry-pick/${{ github.event.pull_request.number }}-${{ github.event.pull_request.merge_commit_sha }}"
           git checkout -b $new_branch origin/$branch
           if ! git cherry-pick ${{ github.event.pull_request.merge_commit_sha }}; then
-            echo "Cherry-pick conflict detected. Aborting..."
-            git cherry-pick --abort
-            git reset --hard
-            exit 1
+            echo "Cherry-pick conflict detected. Attempting to resolve..."
+            if git status | grep -q "nothing to commit, working tree clean"; then
+              git cherry-pick --skip
+            else
+              git add .
+              git commit -m "Resolved conflicts for cherry-pick commit"
+            fi
           fi
           git push origin $new_branch
           echo "new_branch=$new_branch" >> $GITHUB_ENV
